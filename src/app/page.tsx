@@ -1,103 +1,148 @@
-import Image from "next/image";
+"use client";
+import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import TableRoutesRenderer from "./components/tableRoutesRenderer";
+import { StopPlaceQueryResponseWrapper } from "./types/stopPlaceQueryResponse";
+import Skeleton from "./components/skeleton";
+import { format } from "date-fns";
+import { WeatherIcon } from "./components/weatherIcon";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const {
+    isLoading: routesLoading,
+    data: routesData,
+    isError: routesError,
+  } = useQuery<StopPlaceQueryResponseWrapper>({
+    queryKey: ["routes"],
+    queryFn: async () => {
+      const response = await axios.post(
+        "https://api.entur.io/journey-planner/v3/graphql",
+        {
+          query: `# Avgangstavle
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+{
+  stopPlaces(ids: ["NSR:StopPlace:3494", "NSR:StopPlace:3515", "NSR:StopPlace:58853"]) {
+    id
+    name
+    estimatedCalls(timeRange: 72100, numberOfDepartures: 25) {
+      realtime
+      expectedDepartureTime
+      destinationDisplay {
+        frontText
+      }
+      quay {
+        id
+      }
+      serviceJourney {
+        journeyPattern {
+          line {
+            id
+            name
+            transportMode
+          }
+        }
+      }
+    }
+  }
+}
+          `,
+          variables: {},
+        }
+      );
+      return response.data;
+    },
+    refetchInterval: 60000,
+  });
+
+  const {
+    isLoading: weatherLoading,
+    data: weatherData,
+    isError: weatherError,
+  } = useQuery({
+    queryKey: ["weather"],
+    queryFn: async () => {
+      const response = await axios.get(
+        `https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=${process.env.NEXT_PUBLIC_LATITUDE}&lon=${process.env.NEXT_PUBLIC_LONGITUDE}`
+      );
+      const timeseries = response.data.properties.timeseries;
+      const currentTime = new Date();
+
+      const closestFutureTime = timeseries.reduce(
+        (
+          closest: { time: string | number | Date },
+          current: { time: string | number | Date }
+        ) => {
+          const currentTimeDiff =
+            new Date(current.time).getTime() - currentTime.getTime();
+          const closestTimeDiff =
+            new Date(closest.time).getTime() - currentTime.getTime();
+
+          if (
+            currentTimeDiff >= 0 &&
+            (closestTimeDiff < 0 || currentTimeDiff < closestTimeDiff)
+          ) {
+            return current;
+          }
+
+          return closest;
+        },
+        timeseries[0]
+      );
+
+      return closestFutureTime;
+    },
+    refetchInterval: 300000,
+  });
+
+  return (
+    <div className="w-full h-full p-12 bg-black grid grid-rows-7 grid-cols-2 gap-4">
+      <div className="bg-gray-950 border-2 border-gray-700 rounded-2xl text-gray-50 col-span-1 row-span-1 flex items-center justify-between p-4">
+        {weatherLoading ? (
+          <Skeleton className="w-full h-14 rounded-lg" />
+        ) : (
+          <div className="flex items-center justify-center gap-8 w-full">
+            <h2 className="text-5xl font-bold mb-1">
+              {weatherData?.data.instant.details.air_temperature}°C
+            </h2>
+            <WeatherIcon
+              weatherType={weatherData?.data.next_1_hours.summary.symbol_code}
+              size={64}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+        )}
+      </div>
+      <div className="bg-gray-950 border-2 border-gray-700 rounded-2xl text-gray-50 col-span-1 row-span-1 flex items-center justify-between p-4">
+        <div className="flex items-center justify-center w-full">
+          <h2 className="text-6xl font-bold mb-1">
+            {format(new Date(), "HH:mm")}
+          </h2>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+      <TableRoutesRenderer
+        stopName={routesData?.data.stopPlaces[0].name || ""}
+        calls={routesData?.data.stopPlaces[0].estimatedCalls || []}
+        linePlatformFilter={[
+          { lineId: "83", platformId: "6202" },
+          { lineId: "84", platformId: "6202" },
+          { lineId: "580", platformId: "6203" },
+        ]}
+        className="col-span-2 row-span-2"
+      />
+      <TableRoutesRenderer
+        stopName={routesData?.data.stopPlaces[1].name || ""}
+        calls={routesData?.data.stopPlaces[1].estimatedCalls || []}
+        linePlatformFilter={[{ lineId: "81", platformId: "6244" }]}
+        className="col-span-2 row-span-2"
+      />
+      <TableRoutesRenderer
+        stopName={routesData?.data.stopPlaces[2].name || ""}
+        calls={routesData?.data.stopPlaces[2].estimatedCalls || []}
+        linePlatformFilter={[
+          { lineId: "L2", platformId: "936" },
+          { lineId: "L2", platformId: "937" },
+        ]}
+        className="col-span-2 row-span-2"
+      />
     </div>
   );
 }
